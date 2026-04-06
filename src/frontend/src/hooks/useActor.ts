@@ -6,6 +6,7 @@ import { getSecretParameter } from "../utils/urlParams";
 import { useInternetIdentity } from "./useInternetIdentity";
 
 const ACTOR_QUERY_KEY = "actor";
+
 export function useActor() {
   const { identity } = useInternetIdentity();
   const queryClient = useQueryClient();
@@ -15,7 +16,6 @@ export function useActor() {
       const isAuthenticated = !!identity;
 
       if (!isAuthenticated) {
-        // Return anonymous actor if not authenticated
         return await createActorWithConfig();
       }
 
@@ -26,17 +26,21 @@ export function useActor() {
       };
 
       const actor = await createActorWithConfig(actorOptions);
-      const adminToken = getSecretParameter("caffeineAdminToken") || "";
+
+      // Always call initialization -- the backend is idempotent for already-registered
+      // users (it no-ops if the caller is already in the role map). This ensures that
+      // after a canister redeploy or state wipe the user gets re-registered correctly.
+      // getSecretParameter reads from sessionStorage after the first visit, so the
+      // admin token does not need to be in the URL on every page load.
+      const adminToken = getSecretParameter("caffeineAdminToken") ?? "";
       await actor._initializeAccessControlWithSecret(adminToken);
+
       return actor;
     },
-    // Only refetch when identity changes
     staleTime: Number.POSITIVE_INFINITY,
-    // This will cause the actor to be recreated when the identity changes
     enabled: true,
   });
 
-  // When the actor changes, invalidate dependent queries
   useEffect(() => {
     if (actorQuery.data) {
       queryClient.invalidateQueries({
